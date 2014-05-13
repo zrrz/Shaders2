@@ -2,10 +2,6 @@
 using System.Collections;
 
 public class Metaball: MonoBehaviour {
-	
-	/*Amount of cubes in X/Y/Z directions, Dimension will always be from -.5f to .5f in XYZ
-	  remember to call Regen() if changing!
-    */
 	int _dimX=30;
 	int _dimY=30;
 	int _dimZ=30;
@@ -22,40 +18,30 @@ public class Metaball: MonoBehaviour {
 		get {return _dimZ; }
 		set {_dimZ=value; Regen(); }
 	}
-	/*Blobs are a staggered array of floats, where first index is blob, and second is 0=x, 1=y 2=z 3=power
-	  Multidim might be slightly faster, but staggered made the code a little cleaner IMO*/
+
 	public float[][] blobs;
-	
-	/*Cutoff intensity, where the surface of mesh will be created*/
+
 	public float isoLevel=.5f;	
-	
-	/*Scratch buffers for Vertices/Normals/Tris */
+
 	private Vector3[] newVertex;
 	private Vector3[] newNormal;
 	private Vector2[] newUV;
 	private int[] newTri;
-	
-	/*Pointer into scratch buffers for tris and vertices(also used for UVs and Normals)
-	  at the end of a frame it will give the total amount of each*/
+
 	private int triP=0;
 	private int vertP=0;
-	
-	/*Generated at startup for dimX,dimY,dimZ, 
-	  all the points, edges, cubes in the 3D lattice*/
+
 	private mcPoint[] _points;
 	private mcEdge[] _edges;
 	private mcCube[] _cubes;
 		
-	/*Scratch buffers for use within functions, to eliminate the usage of new almost entirely each frame*/
 	private Vector3[] tada;
 	private Vector2[] tada2;
 	private int tadac,tadac2;
 	private int tadam=50000;
-	
-	/*Current frame counter*/
+
 	private int pctr=0;
-	
-	/*Cube Class*/
+
 	private class mcCube {		
 		public mcCube() {
 			cntr=0;
@@ -67,33 +53,24 @@ public class Metaball: MonoBehaviour {
 			points=new mcPoint[8];
 		}
 			
-		/*12 Edges, see march() for their positioning*/
 		public mcEdge[] edges;
-		
-		/*8 Points, see march() for their positioning*/ 
+
 		public mcPoint[] points;
-		
-		/*last frame this cube was processed*/
+
 		public int cntr;
-		
-		/*Pointers into the latice array*/
+
 		public int px;
 		public int py;
 		public int pz;	
 	}	
-	
-	/*Edge class*/
+
 	private class mcEdge {		
-		/*the vector of the calculated point*/
 		public Vector3 v3;
-		
-		/*index into newVertex/Normal/Uv of calculated point*/
+
 		public int vi;
-		
-		/*Last frame this was calculated at*/
+
 		public int cntr;
-		
-		/*axis of edge*/
+
 		public int axisI;
 		
 		public mcEdge(int axisI) {
@@ -101,10 +78,8 @@ public class Metaball: MonoBehaviour {
 			this.axisI=axisI;
 		}		
 	}
-	
-	/*Point (in lattice) class*/
+
 	public class mcPoint {
-		/*Calculated Intensity or Power of point*/
 		public float _i;
 		
 		public int px,py,pz;
@@ -112,8 +87,7 @@ public class Metaball: MonoBehaviour {
 		private Metaball mcblob;
 		
 		public int cntr;
-		
-		/*Object Space position of point*/
+
 		public float[] index;
 		
 		
@@ -127,8 +101,7 @@ public class Metaball: MonoBehaviour {
 			this.cntr=0;
 			this.mcblob=thismcblob;
 		}
-		
-		/*Axis letter accessors*/
+
 		public float x {
 			get{ return index[0]; }
 			set{ index[0]=value; }
@@ -142,7 +115,6 @@ public class Metaball: MonoBehaviour {
 			set{ index[2]=value; }
 		}
 
-		/*Calculate the power of a point only if it hasn't been calculated already for this frame*/
 		public float i() {
 			float pwr;
 			if(cntr<mcblob.pctr) {
@@ -166,8 +138,7 @@ public class Metaball: MonoBehaviour {
 			}
 		}
 	}
-
-	/* Normals are calculated by 'averaging' all the derivatives of the Blob power functions*/ 
+	
 	private Vector3 calcNormal(Vector3 pnt) {
 		int jc;
 		Vector3 result=tada[tadac++];
@@ -186,20 +157,17 @@ public class Metaball: MonoBehaviour {
 		}
 		return result.normalized;
 	}
-
-	/*Given xyz indices into lattice, return referring cube */	
+	
 	private mcCube getCube(int x,int y,int z) {
 		if(x<0 || y<0 || z < 0 || x>=dimX || y>=dimY || z>=dimZ) {return null;}
 		return _cubes[z+(y*(dimZ))+(x*(dimZ)*(dimY))];
 	}
-	
-	/*Given xyz indices into lattice, return referring vertex */
+
 	private mcPoint getPoint(int x,int y,int z) {
 		if(x<0 || y<0 || z < 0 || x>dimX || y>dimY || z>dimZ) {return null;}
 		return _points[z+(y*(dimZ+1))+(x*(dimZ+1)*(dimY+1))];
 	}
-	
-	/*Return the interpolated position of point on an Axis*/
+
 	private Vector3 mPos(mcPoint a,mcPoint b,int axisI) {
 		float mu = (isoLevel - a.i()) / (b.i() - a.i());
 		Vector3 tmp=tada[tadac++];
@@ -208,10 +176,7 @@ public class Metaball: MonoBehaviour {
 		
 		return tmp;
 	}
-	
-	/*If an edge of a cube has not been processed, find the interpolated point for 
-	  that edge (assumes the boundary crosses the edge) and compute the normal
-	  for that point, as well as assigning it an index into the vertex list*/   
+
 	private void genEdge(mcCube cube,int edgei,int p1i,int p2i) {
 		Vector3 v;
 		mcEdge e=cube.edges[edgei];
@@ -224,14 +189,7 @@ public class Metaball: MonoBehaviour {
 			e.cntr=pctr;				
 		}  	
 	}
-	
-	/*Calculate a cube:
-	  First set a boolean pointer made up of all the vertices within the cube
-	  then (if not all in or out of the surface) go through all the edges that 
-	  are crossed by the surface and make sure that a vertex&normal is assigned 
-	  at the point of crossing. Then add all the triangles that cover the surface
-	  within the cube.
-	  Returns true if the surface crosses the cube, false otherwise.*/
+
 	private bool doCube(mcCube cube)
 	{		
 		int edgec,vertc;
@@ -281,16 +239,13 @@ public class Metaball: MonoBehaviour {
 			return false;
 		}					
 	}
-	
-	/*Recurse all the neighboring cubes where thy contain part of the surface*/
-	/*Counter to see how many cubes where processed*/
+
 	int cubec;
 	private void recurseCube(mcCube cube) {
 		mcCube nCube;
 		int jx,jy,jz;
 		jx=cube.px; jy=cube.py; jz=cube.pz;
 		cubec++;
-		/* Test 6 axis cases. This seems to work well, no need to test all 26 cases */
 		nCube=getCube(jx+1,jy,jz);
 		if(nCube!=null && nCube.cntr<pctr) {nCube.cntr=pctr; if(doCube(nCube)) { recurseCube(nCube); }}
 		nCube=getCube(jx-1,jy,jz);
@@ -304,12 +259,7 @@ public class Metaball: MonoBehaviour {
 		nCube=getCube(jx,jy,jz-1);
 		if(nCube!=null && nCube.cntr<pctr) {nCube.cntr=pctr; if(doCube(nCube)) { recurseCube(nCube); }}
 	}
-	
-	/*Go through all the Blobs, and travel from the center outwards in a negative Z direction
-	until we reach the surface, then begin to recurse around the surface. This isn't flawless
-	if the blob isn't completely within the lattice boundaries in the minimal Z axis and no
-	other blob that does check out is in contact with it. The blob will dissapear, but otherwise
-	works well*/
+
 	private void march() {
 		int i,jx,jy,jz;
 		for(i=0;i<blobs.Length;i++) {
@@ -334,33 +284,25 @@ public class Metaball: MonoBehaviour {
 			}					 
 		}
 	}
-
-	/*Unity and Sample Specific, scratch caches to not reallocate vertices/tris/etc...*/
+	
 	Vector3[] fv,fn;
 	int[] ft;
 	Vector2[] fuv;
-	
-	//Last Status Post
-	//private float lt=0f;
 
-	/*Unity and Sample Specific*/
 	private void renderMesh() {
 		int i;	
 
-		/*Clear the Vertices that don't have any real information assigned to them */
 		for(i=0;i<vertP;i++) {fv[i]=newVertex[i];fn[i]=newNormal[i];		                      
 			fuv[i]=tada2[tadac2++];
 			Vector3 fuvt=transform.TransformPoint(fn[i]).normalized;							  
 			fuv[i].x=(fuvt.x+1f)*.5f;fuv[i].y=(fuvt.y+1f)*.5f;}							  
-		//							  fuv[i].x=fn[i].x;fuv[i].y=fn[i].y;}
 		
 		for(i=vertP;i<fv.Length;i++) {
 			fv[i][0]=0; fn[i][0]=0; fuv[i][0]=0;
 			fv[i][1]=0; fn[i][1]=0; fuv[i][1]=0;
 			fv[i][2]=0;
 		}
-		
-		
+				
 		for(i=0;i<triP;i++) {ft[i]=newTri[i];}
 		for(i=triP;i<ft.Length;i++) {ft[i]=0;}
 		
@@ -370,20 +312,17 @@ public class Metaball: MonoBehaviour {
 		mesh.uv = fuv;
 		mesh.triangles = ft;	
 		mesh.normals = fn;
-		
-		/*For Disco Ball Effect*/
+
 		//mesh.RecalculateNormals();
 		//CalculateTangents(mesh);
 	}
 
 	public static void CalculateTangents(Mesh mesh) {
-		//speed up math by copying the mesh arrays
 		int[] triangles = mesh.triangles;
 		Vector3[] vertices = mesh.vertices;
 		Vector2[] uv = mesh.uv;
 		Vector3[] normals = mesh.normals;
-		
-		//variable definitions
+
 		int triangleCount = triangles.Length;
 		int vertexCount = vertices.Length;
 		
@@ -444,8 +383,7 @@ public class Metaball: MonoBehaviour {
 		}	
 		mesh.tangents = tangents;
 	}
-	
-	/*What is needed to do every frame for the calculation and rendering of the Metaballs*/
+
 	void doFrame() {
 		tadac=0;
 		tadac2=0;
@@ -456,8 +394,7 @@ public class Metaball: MonoBehaviour {
 		march();		
 		renderMesh();		
 	}
-	
-	/*Regenerate Lattice and Connections, when changing Dimensions of Lattice*/
+
 	void Regen() {
 		startObjs();	
 		startEngine();	
@@ -496,13 +433,7 @@ public class Metaball: MonoBehaviour {
 	{
 		((MeshFilter) GetComponent("MeshFilter")).mesh=new Mesh();
 	}
-		
-	/*Generate the Cube Lattice
-	  All shared vertices and edges are connected across cubes,
-	  it's not perfect in that the edges along the lower index borders
-	  are not connected, but all the rest are, this shouldn't make any
-	  noticeable visual impact, and have no performance impact unless
-	  a blob lies along those borders*/	
+
 	private void startObjs()
 	{
 		int i; 
@@ -512,16 +443,13 @@ public class Metaball: MonoBehaviour {
 		int cubeCount=(dimX*dimY*dimZ);
 		int edgeCount=(cubeCount*3)+((2*dimX*dimY)+(2*dimX*dimZ)+(2*dimY*dimZ))+dimX+dimY+dimZ; //Ideal Edge Count
 		int edgeNow=edgeCount+((dimX*dimY)+(dimY*dimZ)+(dimZ*dimX))*2; //Haven't combined the edges of the 0 index borders
-		
-		//Should be a pretty safe amount
+
 		int tmpv=(int)(dimX*dimY*dimZ/7);
 		tadam=tmpv*4;
 		fv=new Vector3[tmpv];
 		fn=new Vector3[tmpv];
 		fuv=new Vector2[tmpv];
-		
-		
-		//Pretty save amount of Tris as well
+
 		ft=new int[(int)(cubeCount*.75)];
 		
 		newVertex=new Vector3[300000];
@@ -529,8 +457,6 @@ public class Metaball: MonoBehaviour {
 		newNormal=new Vector3[300000];
 		tada=new Vector3[tadam*2];
 		tada2=new Vector2[tadam*2];
-		
-		//newUV=new Vector2[300000];
 		
 		_cubes=new mcCube[cubeCount];
 		_points=new mcPoint[pointCount];
@@ -640,8 +566,7 @@ public class Metaball: MonoBehaviour {
 			}
 		}		
 	}
-	
-	/*Courtesy of http://local.wasp.uwa.edu.au/~pbourke/geometry/polygonise/*/
+
 	private int[,]	triTable = new int[,]
 	{{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 		{0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
